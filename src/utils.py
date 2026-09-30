@@ -1,14 +1,31 @@
-from langchain_community.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOllama
 from langchain.schema import SystemMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
-import os 
+import re
+import requests
 from src.prompts import templates
 
 
-def load_model(model_name):
-    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-    llm = ChatOpenAI(api_key=OPENAI_API_KEY, model_name=model_name)
-    return llm 
+DEFAULT_OLLAMA_URL = "http://localhost:11434"
+DEFAULT_MODEL = "gemma4:26b"
+
+
+def list_ollama_models(base_url=DEFAULT_OLLAMA_URL):
+    response = requests.get(f"{base_url.rstrip('/')}/api/tags", timeout=5)
+    response.raise_for_status()
+    models = response.json().get("models", [])
+    # embedding-only models can't chat, so leave them out
+    return [m["name"] for m in models if "completion" in m.get("capabilities", ["completion"])]
+
+
+def load_model(model_name, base_url=DEFAULT_OLLAMA_URL):
+    llm = ChatOllama(model=model_name, base_url=base_url.rstrip('/'))
+    return llm
+
+
+def strip_thinking(text):
+    # some reasoning models put their thinking inline in <think> tags
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 def convert_newlines(prompt):
@@ -34,7 +51,7 @@ def apply_skill(llm, skill, prompt, order_num, lang_eng=False):
 
     response = llm.invoke(messages)
 
-    return response.content
+    return strip_thinking(response.content)
 
 
 def apply_skills(llm, skills_to_apply, prompt, lang_eng=False):
@@ -62,5 +79,5 @@ def apply_skills(llm, skills_to_apply, prompt, lang_eng=False):
 
     response = llm.invoke(messages)
 
-    return response.content
+    return strip_thinking(response.content)
 

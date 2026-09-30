@@ -1,6 +1,5 @@
 import streamlit as st
-import os 
-from src.utils import load_model, apply_skill, apply_skills, convert_newlines
+from src.utils import load_model, list_ollama_models, apply_skill, apply_skills, convert_newlines, DEFAULT_OLLAMA_URL, DEFAULT_MODEL
 from src.prompts import insert
 
 
@@ -13,16 +12,20 @@ st.text("")
 st.text("")
 
 
-with st.popover("**:blue[Enter your OpenAI API key]**"):
-    OPENAI_API_KEY = st.text_input("OpenAI API key", type="password")
-    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY 
+with st.popover("**:blue[Ollama server]**"):
+    OLLAMA_URL = st.text_input("Ollama server URL", value=DEFAULT_OLLAMA_URL)
     st.info("""
-    You can get your OpenAI API key [here](https://platform.openai.com/api-keys)
+    Start Ollama with `ollama serve` and pull a model with `ollama pull <model>`. See [ollama.com](https://ollama.com)
     """)
 
-temp, buff = st.columns([0.3, 0.7]) 
-if not OPENAI_API_KEY:
-    temp.error("**Please enter your OpenAI API key**") 
+try:
+    available_models = list_ollama_models(OLLAMA_URL)
+except Exception:
+    available_models = []
+
+temp, buff = st.columns([0.3, 0.7])
+if not available_models:
+    temp.error(f"**No Ollama models found at {OLLAMA_URL}. Is Ollama running?**")
 st.text("")
 st.text("")
 
@@ -120,15 +123,15 @@ with col2:
 
     st.text("")
 
-    model_name = st.selectbox("**Select the model**", 
-                              ("gpt-4o", "chatgpt-4o-latest", "gpt-4o-mini", "gpt-4-turbo", "gpt-4-0125-preview"), 
-                              index=0, 
+    model_name = st.selectbox("**Select the model**",
+                              available_models,
+                              index=available_models.index(DEFAULT_MODEL) if DEFAULT_MODEL in available_models else (0 if available_models else None),
                               placeholder="Select the model...")
 
     st.text("") 
 
     lang_eng = st.checkbox("**Provide the enhanced prompt in English.** (If the original input is in another language but you need the prompt in English.)")
-    simplified = st.checkbox("**Enhance the prompt with simplified instructions that save processing time and tokens.** (Best results with GPT-4 models)")
+    simplified = st.checkbox("**Enhance the prompt with simplified instructions that save processing time and tokens.** (Best results with larger models)")
     st.text("")
     st.text("")
     enhance_btn = st.button("**:blue[Enhance!]**")
@@ -136,12 +139,14 @@ with col2:
     if enhance_btn:
         if not prompt:
             st.toast("Please enter your prompt.")
-        if not OPENAI_API_KEY:
-            st.toast("Please enter your OpenAI API Key.")
+            st.stop()
+        if not model_name:
+            st.toast("Please select an Ollama model.")
+            st.stop()
 
         order_num = 1
-        with st.spinner("Processing..."): 
-            llm = load_model(model_name)
+        with st.spinner("Processing..."):
+            llm = load_model(model_name, OLLAMA_URL)
 
             if simplified:
                 prompt = apply_skills(llm, skills_to_apply, prompt, lang_eng) 
